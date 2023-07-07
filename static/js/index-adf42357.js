@@ -1,0 +1,1 @@
+function r(t){return Object.prototype.toString.call(t)}const a="[object Object]";function i(t,...n){n.forEach(o=>{for(const e in o){const c=o[e];if(t[e]!==void 0)switch(r(c)){case a:i(t[e],c);break;default:t[e]=c;break}}})}export{i as m};
