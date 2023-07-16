@@ -1,1 +1,0 @@
-import{aw as t}from"./index-ca56b461.js";const n=e=>t.post("/operations/System/Perm/CreateMany",{data:e}),r=e=>t.get(`/operations/System/Menu/GetChildrenMenus?pid=${e}`),o=e=>t.get(`/operations/System/Menu/GetMenuPerms?menuId=${e}`),a=e=>t.post("/proxy/perm",{data:e}),m=e=>t.post("/operations/System/Role/DeleteMany",{ids:e});export{o as a,a as b,m as d,r as g,n as s};
