@@ -1,1 +1,0 @@
-import{aw as t}from"./index-aec91119.js";const r=e=>t.post("/operations/System/Perm/CreateMany",{data:e}),n=e=>t.get(`/operations/System/Menu/GetChildrenMenus?pid=${e}`),o=e=>t.get(`/operations/System/Menu/GetMenuPerms?menuId=${e}`),a=e=>t.post("/proxy/perm",{data:e});export{o as a,a as b,n as g,r as s};
