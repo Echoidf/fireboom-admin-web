@@ -1,0 +1,1 @@
+import{aw as t}from"./index-1ea74710.js";const s=e=>t.request("post","/operations/System/Perm/CreateMany",{data:e}),n=e=>t.request("get",`/operations/System/Menu/GetChildrenMenus?pid=${e}`),o=e=>t.request("get",`/operations/System/Menu/GetMenuPerms?menuId=${e}`),u=e=>t.request("post","/proxy/userPerm/perm",{data:e});export{o as a,u as b,n as g,s};
