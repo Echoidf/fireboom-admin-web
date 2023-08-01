@@ -1,4 +1,5 @@
 import axios from "@/utils/http";
+import { string } from "vue-types";
 
 export type Perm = {
   id: number;
@@ -33,6 +34,13 @@ export const getMenuRoles = (data: string) => {
   return axios.get<any>(`/operations/System/Role/GetMenuRoles?title=${data}`);
 };
 
+/**
+ *  根据角色查询用户信息
+ */
+export const getRoleUsers = (code: string) => {
+  return axios.get<any>(`/operations/System/User/GetRoleUsers?code=${code}`);
+}
+
 export const getMenuPerms = (data: string) => {
   return axios.get<any>(`/operations/System/Perm/GetMany?name=${data}`);
 };
@@ -60,7 +68,7 @@ export const roleMenuTreeselect = (id: number) => {
   });
 }
 
-export const updateRolePermAdd = (rolecode: number, roleId: number, menuIds: number[]) => {
+export const updateRolePermAdd = (rolecode: string, roleId: number, menuIds: number[]) => {
   return axios.post<any>("/proxy/bindmenu", {
     data: {
       rolecode,
@@ -70,7 +78,7 @@ export const updateRolePermAdd = (rolecode: number, roleId: number, menuIds: num
   })
 };
 
-export const updateRolePermRemove = (rolecode: number, roleId: number, menuIds: number[]) => {
+export const updateRolePermRemove = (rolecode: string, roleId: number, menuIds: number[]) => {
   return axios.post<any>("/proxy/unBindMenu", {
     data: {
       rolecode,
@@ -79,3 +87,50 @@ export const updateRolePermRemove = (rolecode: number, roleId: number, menuIds: 
     }
   })
 };
+
+//  GET /operations/System/Menu/GetApiList
+export const GetApiList = () => {
+  return axios.get<any>("/operations/System/Menu/GetApiList");
+};
+
+// GET /operations/System/Log/GetLog 
+export const GetLog = (skip: number, take: number, sort?: object) => {
+  return axios.get<any>(`/operations/System/Log/GetLog?skip=${skip}&take=${take}`);
+}
+
+// GET /operations/System/Log/GetIsOpen
+export const GetIsOpen = () => {
+  return axios.get<any>(`/operations/System/Log/GetIsOpen`);
+};
+
+// POST /operations/System/Log/ChangeOpen
+export const ChangeOpen = (data: object) => {
+  return axios.post<any>(`/operations/System/Log/ChangeOpen`, {
+    data
+  });
+};
+
+/**
+ * 获取所有日志数目
+ * GET /operations/System/Log/GetAllLog
+ */
+export const getAllLogNumber = () => {
+  return axios.get<any>("/operations/System/Log/GetAllLog");
+}
+
+/**
+ * 根据日志id删除日志
+ */
+export const deleteLog = (data: object) => {
+  console.log(data);
+  return axios.post("/operations/System/Log/DeleteLog", data);
+}
+
+/**
+ * 日志的模糊查询
+ */
+export const getLikeLog = (data: object) => {
+  return axios.get<any>("/operations/System/Log/GetLikeLog", {
+    params: data
+  });
+}

@@ -18,3 +18,12 @@ export const createOne = (
     }
   });
 };
+
+/**
+ * 文章的模糊查询
+ */
+export const getPostLike = (data: object) => {
+  return axios.get<any>("/operations/Post/GetLikeList", {
+    params: data,
+  });
+}

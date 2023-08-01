@@ -74,6 +74,7 @@ async function onSubmit() {
   }
   ElMessage.success("绑定完成");
   close();
+
 }
 
 watchEffect(async () => {

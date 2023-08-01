@@ -10,20 +10,24 @@ import api, { convertPageQuery } from "@/api";
 import { Post__CreateOneInput, Post__GetListResponse } from "@/api/models";
 import { merge } from "@/utils";
 import WangEditor from "@/components/WangEditor/index.vue";
-import { FormItemRule, ElForm, ElMessage, ElMessageBox, ElPagination } from "element-plus";
+import { FormItemRule, ElForm, ElMessage, ElMessageBox, ElPagination, ElUpload, ElIcon } from "element-plus";
 import type { Arrayable } from "element-plus/es/utils";
 import { ref, reactive, onMounted } from "vue";
 import { Icon } from '@iconify/vue';
 import { createOne } from "@/api/post";
 import { useUserStoreHook } from "@/store/modules/user";
-
+import { message } from '@/utils/message';
+import axios from 'axios';
+import { formatToken, getToken } from '@/utils/auth';
 const queryFormRef = ref(ElForm);
 const dataFormRef = ref(ElForm);
-
+const hackReset = ref(false)
 const loading = ref(false);
 const ids = ref<number[]>([]);
 const total = ref(0);
-
+const imageUrl = ref('');
+const fileList = ref([]);
+const published_at = ref("");
 const queryParams = reactive<PageQuery>({
   title: "",
   pageNum: 1,
@@ -38,11 +42,11 @@ const dialog = reactive<DialogOption>({
   visible: false
 });
 
-const formData = reactive<Post__CreateOneInput>({
+const formData = reactive({
   title: "",
   poster: "",
   content: "",
-  publishedAt: undefined
+  publishedAt: "",
 });
 const editingId = ref<number>();
 
@@ -50,7 +54,7 @@ const rules = reactive<
   Partial<Record<keyof Post__CreateOneInput, Arrayable<FormItemRule>>>
 >({
   title: [{ required: true, message: "请输入文章标题", trigger: "blur" }],
-  poster: [{ required: true, message: "请上传文章封面", trigger: "blur" }],
+  poster: [{ required: false, message: "请上传文章封面", trigger: "blur" }],
   content: [{ required: true, message: "请输入文章内容", trigger: "blur" }]
 });
 
@@ -87,38 +91,87 @@ function handleSelectionChange(selection: any) {
 }
 
 /**
+*  时间格式转换
+*/
+function reverse(dateStr: string) {
+  // 创建一个新的Date对象
+  const date = new Date(dateStr);
+  date.setDate(date.getDate() + 1);
+  // 定义月份的简写名称数组
+  const monthNames = [
+    "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
+  ];
+
+  // 获取日期中的月份、日期、年份以及时区偏移
+  const month = monthNames[date.getMonth()];
+  const day = date.getDate().toString().padStart(2, '0');
+  const year = date.getFullYear();
+  const time = date.toTimeString().split(' ')[0];
+  // const timezoneOffset = date.toString().match(/\((.*)\)/)[1];
+
+  // 构建最终格式的字符串
+  const formattedDate = `Mon ${month} ${day} ${year} ${time} GMT+0800 (GMT+08:00)`;
+  return formattedDate;
+}
+/**
  * 新增/编辑
  *
  * @param id 数据ID
  */
-async function openDialog(id?: number) {
-  editingId.value = id;
-  if (id) {
-    dialog.title = "修改文章";
-    const { error, data } = await api.query({
-      operationName: "Post/GetOne",
-      input: { id }
-    });
-    if (!error) {
-      dialog.visible = true;
-      merge(formData, data!.data!);
-    } else {
-      ElMessage.error("获取数据失败");
+async function openDialog(post) {
+  if (post) {
+    editingId.value = post.id;
+    if (editingId.value) {
+      dialog.title = "修改文章";
+      imageUrl.value = post.poster;
+      const { error, data } = await api.query({
+        operationName: "Post/GetOne",
+        input: { id: editingId.value }
+      });
+      if (!error) {
+        merge(formData, data!.data!);
+        formData.publishedAt = data!.data!.published_at;
+        published_at.value = data!.data!.published_at;
+        if (formData.publishedAt) {
+          formData.publishedAt = reverse(formData.publishedAt);
+        }
+        hackReset.value = true;
+        dialog.visible = true;
+      } else {
+        ElMessage.error("获取数据失败");
+      }
     }
   } else {
+    hackReset.value = true;
     dialog.visible = true;
     dialog.title = "新增文章";
   }
+
 }
 
 /**
  * 表单提交
  */
-function handleSubmit() {
+async function handleSubmit() {
   loading.value = false;
+  const data = getToken();
+  if (File) {
+    await axios.post("/s3/tengxunyun/upload?directory=/admin", File, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+        "Authorization": formatToken(data.accessToken)
+      }
+    }).then(res => {
+      formData.poster = "https://test-1314985928.cos.ap-nanjing.myqcloud.com/" + res.data[0].key;
+    }).catch(err => {
+      ElMessage.error(err)
+    })
+  }
   dataFormRef.value.validate(async (isValid: boolean) => {
     if (isValid) {
       if (editingId.value) {
+        formData.publishedAt = published_at.value;
         const { error } = await api.mutate({
           operationName: "Post/UpdateOne",
           input: {
@@ -130,15 +183,19 @@ function handleSubmit() {
           ElMessage.success("修改成功");
           closeDialog();
           handleQuery();
+        } else {
+          ElMessage.error("修改失败");
         }
         loading.value = false;
       } else {
         const username = useUserStoreHook().username;
         createOne(formData.title, username, formData.content, formData.poster, formData.publishedAt).then(res => {
-          if (res.data.data.data.id) {
+          if (res.data.data.data) {
             ElMessage.success("新增成功");
             closeDialog();
             handleQuery();
+          } else {
+            ElMessage.error("新增失败");
           }
           loading.value = false;
         });
@@ -151,6 +208,7 @@ function handleSubmit() {
  * 关闭弹窗
  */
 function closeDialog() {
+  hackReset.value = false;
   dialog.visible = false;
   resetForm();
 }
@@ -165,7 +223,7 @@ function resetForm() {
   formData.title = "";
   formData.poster = "";
   formData.content = "";
-  formData.publishedAt = undefined;
+  formData.publishedAt = "";
 }
 
 /**
@@ -193,10 +251,33 @@ function handleDelete(id?: number) {
     }
   });
 }
+function beforeAvatarUpload(rawFile) {
+  const isIMAGE = rawFile.type === 'image/jpeg' || 'image/jpg' || 'image/png';
+  if (!isIMAGE) {
+    message("上传文件只能是图片格式", { type: "error" });
+    return false;
+  }
+  if (rawFile.size / 1024 / 1024 > 2) {
+    message("上传文件大小不能超过2MB", { type: "error" });
+    return false;
+  }
+  return true;
+}
+let File = undefined;
+function handleAvatarSuccess(res, file) {
+  imageUrl.value = URL.createObjectURL(file.raw!)
+}
+function changeImage(file) {
+  File = file;
+  imageUrl.value = URL.createObjectURL(file.raw!)
+}
+function UploadImage(param) {
+}
 
 onMounted(() => {
   handleQuery();
 });
+
 </script>
 
 <template>
@@ -240,7 +321,11 @@ onMounted(() => {
         <el-table-column label="标题" prop="title" width="200" ellipsis />
         <el-table-column label="封面" prop="poster" width="200">
           <template #default="scope">
-            <el-image :src="scope.row.poster" fit="fill" :preview-src-list="[scope.row.poster]" />
+            <el-image v-if="scope.row.poster.startsWith('https')" :src="scope.row.poster" fit="fill"
+              :preview-src-list="[scope.row.poster]" :preview-teleported="true" :hide-on-click-modal="true" />
+            <el-image v-else src="https://pic4.zhimg.com/80/v2-15a8561ac8de1d9c8a8bbbb502d4e873_720w.webp"
+              :preview-src-list="['https://pic4.zhimg.com/80/v2-15a8561ac8de1d9c8a8bbbb502d4e873_720w.webp']" fit="fill"
+              :preview-teleported="true" :hide-on-click-modal="true" />
           </template>
         </el-table-column>
         <el-table-column label="作者" prop="author" width="200" ellipsis align="center" />
@@ -249,7 +334,7 @@ onMounted(() => {
         <el-table-column fixed="right" label="操作" align="center" width="220">
           <template #default="scope">
             <Auth value="post:edit">
-              <el-button type="primary" link size="small" @click.stop="openDialog(scope.row.id)">
+              <el-button type="primary" link size="small" @click.stop="openDialog(scope.row)">
                 <Icon icon="ep:edit" />编辑
               </el-button>
             </Auth>
@@ -271,15 +356,24 @@ onMounted(() => {
         <el-form-item label="标题" prop="title">
           <el-input v-model="formData.title" placeholder="请输入文章标题" />
         </el-form-item>
+        <!-- 后端接收文件的URL -->
         <el-form-item label="封面" prop="poster">
-          <el-input v-model="formData.poster" placeholder="请输入封面图片地址" />
+          <el-upload class="avatar-uploader" action="#" :show-file-list="false" accept="image/jpg,image/jpeg,image/png"
+            :on-success="handleAvatarSuccess" :before-upload="beforeAvatarUpload" :on-change="changeImage"
+            :http-request="UploadImage" :file-list="fileList">
+            <img v-if="imageUrl" :src="imageUrl" class="avatar" title="点击重新上传" />
+            <!-- <i class="el-icon-plus avatar-uploader-icon"></i> -->
+            <el-icon v-else class="avatar-uploader-icon">
+              <plus />
+            </el-icon>
+          </el-upload>
         </el-form-item>
         <el-form-item label="内容" prop="content">
-          <WangEditor v-model="formData.content" />
+          <WangEditor v-if="hackReset" v-model="formData.content" />
           <!-- <el-input type="textarea" :rows="5" v-model="formData.content" placeholder="请输入文章内容" /> -->
         </el-form-item>
         <el-form-item label="发布时间" prop="publishedAt">
-          <el-date-picker v-model="formData.publishedAt" type="datetime" placeholder="请选择发布时间" />
+          <el-date-picker v-model="formData.publishedAt" type="date" placeholder="请选择发布时间" />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -293,3 +387,34 @@ onMounted(() => {
     </el-dialog>
   </div>
 </template>
+
+<style scoped>
+.avatar-uploader .avatar {
+  width: 178px;
+  height: 178px;
+  display: block;
+}
+</style>
+
+<style>
+.avatar-uploader .el-upload {
+  border: 1px dashed var(--el-border-color);
+  border-radius: 6px;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: var(--el-transition-duration-fast);
+}
+
+.avatar-uploader .el-upload:hover {
+  border-color: var(--el-color-primary);
+}
+
+.el-icon.avatar-uploader-icon {
+  font-size: 28px;
+  color: #8c939d;
+  width: 178px;
+  height: 178px;
+  text-align: center;
+}
+</style>

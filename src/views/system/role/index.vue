@@ -16,12 +16,15 @@ import { ref, reactive, onMounted, nextTick } from "vue";
 import { Icon } from '@iconify/vue';
 import { hasAuth, getAuths } from "@/router/utils";
 import { useUserStoreHook } from "@/store/modules/user";
-import { deleteRoles, roleMenuTreeselect, updateRolePermAdd, updateRolePermRemove } from "@/api/system";
+import { deleteRoles, getRolePerms, getRoleUsers, roleMenuTreeselect, updateRolePermAdd, updateRolePermRemove } from "@/api/system";
+import { sessionKey } from "@/utils/auth";
+import { storageSession } from "@pureadmin/utils";
+import router from "@/router";
 
 defineOptions({
   name: "RoleManage"
 });
-
+const store = useUserStoreHook();
 const queryFormRef = ref(ElForm);
 const roleFormRef = ref(ElForm);
 const menuRef = ref(ElTree);
@@ -29,43 +32,28 @@ const menuOptions = ref([]);
 const loading = ref(false);
 const ids = ref<number[]>([]);
 const total = ref(0);
-// const rules = {
-//         roleName: [
-//           { required: true, message: "角色名称不能为空", trigger: "blur" }
-//         ],
-//         roleKey: [
-//           { required: true, message: "权限字符不能为空", trigger: "blur" }
-//         ],
-//         roleSort: [
-//           { required: true, message: "角色顺序不能为空", trigger: "blur" }
-//         ]
-//       }
+const userInfoById = ref([]);
 const queryParams = reactive<PageQuery>({
   pageNum: 1,
-  pageSize: 10
+  pageSize: 10,
+  code: "",
 });
-
 const roleList = ref<Role[]>([]);
-
 const dialog = reactive<DialogOption>({
   visible: false
 });
+let dialogEnterLeave = ""
 let checkedKeys = [];
 let newCheckedKeys = [];
 let allKeys = [];
-// const formData = reactive<Required<Omit<Role, "id">>>({
-//   code: "",
-//   remark: ""
-// });
 const formData = reactive({
   code: "",
   remark: "",
-  menuCheckStrictly: false
+  menuCheckStrictly: false,
 })
 const editingId = ref<number>();
-
 const rules = reactive<FormRules>({
-  code: [{ required: true, message: "请输入角色编码", trigger: ['blur', 'change'] },
+  code: [{ required: true, message: "请输入角色编码", trigger: ['blur'] },
   {
     validator: function (rule, value, callback) {
       if (! /^[a-zA-Z][a-zA-Z0-9_]*$/.test(value)) {
@@ -76,7 +64,6 @@ const rules = reactive<FormRules>({
     }
   }]
 });
-
 const apiBindVisible = ref(false);
 const menuBindVisible = ref(false);
 const bindingRole = ref<Role>();
@@ -86,6 +73,7 @@ const menu = ref(null)
 defineExpose({
   menu,
 });
+
 /**
  * 查询
  */
@@ -112,7 +100,7 @@ function resetQuery() {
 }
 
 /**
- * 行checkbox change事件
+ * checkbox change事件
  */
 function handleSelectionChange(selection: any) {
   ids.value = selection.map((item: any) => item.id);
@@ -122,14 +110,19 @@ function handleSelectionChange(selection: any) {
  * 打开角色表单弹窗
  */
 function openDialog(role?: Role) {
+  dialogEnterLeave = "dialog-from-right";
   dialog.visible = true;
   if (role) {
     dialog.title = "修改角色";
     merge(formData, role);
     editingId.value = role.id;
-    getRoleMenuTreeselect(role.id)
+    getRoleMenuTreeselect(role.id);
   } else {
     editingId.value = 0;
+    roleMenuTreeselect(1).then(response => {
+      menuOptions.value = response.data.menus;
+      checkedKeys = [];
+    })
     dialog.title = "新增角色";
   }
 }
@@ -157,29 +150,23 @@ async function handleSubmit(code) {
         })
         // 发送增加权限的请求
         if (menuIdsAdd.length) {
-          updateRolePermAdd(code, editingId.value, menuIdsAdd);
+          await updateRolePermAdd(code, editingId.value, menuIdsAdd);
         }
         // 发送减少权限的请求
         if (menuIdsRemove.length) {
-          updateRolePermRemove(code, editingId.value, menuIdsRemove);
+          await updateRolePermRemove(code, editingId.value, menuIdsRemove);
         }
-        // const { error } = await api.mutate({
-        //   operationName: "System/Role/UpdateOne",
-        //   input: {
-        //     id: editingId.value,
-        //     remark: formData.remark
-        //   }
-        // });
-        console.log(menuIdsAdd);
-        console.log(menuIdsRemove);
-
         if (!menuIdsAdd.length && !menuIdsRemove.length) {
           ElMessage.warning("您没有做任何修改");
           closeDialog();
         } else {
-          ElMessage.success("修改成功");
-          closeDialog();
-          resetQuery();
+          // 修改本地以及store中的权限perm
+          getRolePerms(store.roles).then(res => {
+            store.SET_PERMISSIONS(res.data);
+            ElMessage.success("修改成功");
+            closeDialog();
+            resetQuery();
+          })
         }
       } else {
         // 角色重复性校验
@@ -187,12 +174,33 @@ async function handleSubmit(code) {
         if (verify) {
           ElMessage.warning("该角色已存在,请勿重复添加");
         } else {
-          const { error } = await api.mutate({
+          const { data, error } = await api.mutate({
             operationName: "System/Role/AddOne",
             input: {
               ...formData
             }
           });
+          // 判断是权限是增加、减少、没有改变
+          const menuIdsAdd = [];
+          const menuIdsRemove = [];
+          newCheckedKeys.forEach(item => {
+            if (!checkedKeys.includes(item)) {
+              menuIdsAdd.push(item)
+            }
+          })
+          checkedKeys.forEach(item => {
+            if (!newCheckedKeys.includes(item)) {
+              menuIdsRemove.push(item)
+            }
+          })
+          // 发送增加权限的请求
+          if (menuIdsAdd.length) {
+            await updateRolePermAdd(code, data.data.id, menuIdsAdd);
+          }
+          // 发送减少权限的请求
+          if (menuIdsRemove.length) {
+            await updateRolePermRemove(code, data.data.id, menuIdsRemove);
+          }
           if (!error) {
             ElMessage.success("新增成功");
             closeDialog();
@@ -209,6 +217,7 @@ async function handleSubmit(code) {
  * 关闭弹窗
  */
 function closeDialog() {
+  dialogEnterLeave = "dialog-leave";
   dialog.visible = false;
   resetForm();
 }
@@ -249,6 +258,21 @@ function handleDelete(roleId?: number) {
   });
 }
 
+
+/**
+ * 根据角色id查看用户信息
+ */
+function getRoleUser(code: string) {
+  getRoleUsers(code).then(res => {
+    userInfoById.value = res.data.data.main_findManyrole[0]._join.main_findManyrole_user.map(item => {
+      return { Id: item._join.main_findManyuser[0].id, userName: item._join.main_findManyuser[0].name };
+    })
+  })
+}
+
+function clearRoleUser() {
+  userInfoById.value.length = 0;
+}
 /**
  * 权限配置
  */
@@ -266,12 +290,12 @@ onMounted(() => {
   handleQuery();
 });
 
-
 /** 根据角色ID查询菜单树结构 */
-function getRoleMenuTreeselect(roleId: number) {
-  return roleMenuTreeselect(roleId).then(response => {
+function getRoleMenuTreeselect(roleId?: number) {
+  roleMenuTreeselect(roleId).then(response => {
     menuOptions.value = response.data.menus;
     checkedKeys = response.data.checkedKeys;
+    menuNodeAll.value = checkedKeys.length === response.data.allKeys.length;
     allKeys = response.data.allKeys;
     nextTick(() => {
       response.data.checkedKeys.forEach(item => {
@@ -304,12 +328,8 @@ function handleCheckedTreeConnect(event) {
   formData.menuCheckStrictly = event;
 }
 function currentChecked(nodeObj, SelectedObj) {
-  // console.log(SelectedObj)
-  // console.log(SelectedObj.checkedKeys)   // 这是选中的节点的key数组
-  // console.log(SelectedObj.checkedNodes)  // 这是选中的节点数组  
   newCheckedKeys = SelectedObj.checkedKeys;
-  console.log(checkedKeys);
-
+  menuNodeAll.value = newCheckedKeys.length === allKeys.length;
 }
 </script>
 
@@ -320,7 +340,6 @@ function currentChecked(nodeObj, SelectedObj) {
         <el-form-item prop="code" label="编码">
           <el-input v-model="queryParams.code" placeholder="角色编码" clearable @keyup.enter="handleQuery" />
         </el-form-item>
-
         <el-form-item>
           <el-button type="primary" @click="handleQuery">
             <Icon icon="ep:search" />搜索
@@ -339,15 +358,12 @@ function currentChecked(nodeObj, SelectedObj) {
             <Icon icon="ep:plus" />新增
           </el-button>
         </Auth>
-
         <Auth value="system:role:remove">
           <el-button type="danger" :disabled="ids.length === 0" @click="handleDelete()">
             <Icon icon="ep:delete" />删除
           </el-button>
         </Auth>
-
       </template>
-
       <el-table ref="dataTableRef" v-loading="loading" :data="roleList" @selection-change="handleSelectionChange"
         highlight-current-row border>
         <el-table-column type="selection" width="55" align="center" />
@@ -365,46 +381,105 @@ function currentChecked(nodeObj, SelectedObj) {
                 <Icon icon="ep:delete" />删除
               </el-button>
             </Auth>
+            <el-popover placement="bottom" trigger="click" :width="300" title="用户信息"
+              @before-enter="getRoleUser(scope.row.code)" @after-leave="clearRoleUser">
+              <template #reference>
+                <el-button type="primary" size="small" link>
+                  查看用户
+                </el-button>
+              </template>
+              <el-table :data="userInfoById">
+                <el-table-column width="100" property="Id" label="编号" align="center" />
+                <el-table-column width="200" property="userName" label="用户名" align="center" />
+              </el-table>
+            </el-popover>
           </template>
         </el-table-column>
       </el-table>
-
       <el-pagination v-if="total > 0" v-model:total="total" v-model:page="queryParams.pageNum"
         v-model:limit="queryParams.pageSize" @pagination="handleQuery" />
     </el-card>
 
     <!-- 角色表单弹窗 -->
-    <el-dialog :title="dialog.title" v-model="dialog.visible" width="500px" @close="closeDialog">
-      <el-form ref="roleFormRef" :model="formData" :rules="rules" label-width="100px">
+    <el-dialog :title="dialog.title" v-model="dialog.visible" width="500px" @close="closeDialog" :class="dialogEnterLeave"
+      :show-close="false" :height="'100vh'">
+      <el-form ref="roleFormRef" :model="formData" :rules="rules" label-width="100px" class="dialog-content-left">
         <el-form-item label="角色编码" prop="code">
           <el-input v-model="formData.code" :readonly="!!editingId" placeholder="请输入角色编码" />
         </el-form-item>
-
         <el-form-item label="角色描述" prop="remark">
           <el-input v-model="formData.remark" placeholder="请输入角色描述" />
         </el-form-item>
+        <el-form-item label="菜单权限" v-if="dialog.title !== '新增角色'">
+          <el-checkbox v-model="menuExpand" @change="handleCheckedTreeExpand($event)">展开/折叠</el-checkbox>
+          <el-checkbox v-model="menuNodeAll" @change="handleCheckedTreeNodeAll($event)">全选/全不选</el-checkbox>
+        </el-form-item>
+        <el-form-item>
+          <el-tree class="tree-border" :data="menuOptions" show-checkbox ref="menu" node-key="id" empty-text="......"
+            @check="currentChecked" style="display: block;">
+          </el-tree>
+        </el-form-item>
       </el-form>
-
       <template #footer>
         <div class="dialog-footer">
           <el-button type="primary" @click="handleSubmit(formData.code)">确 定</el-button>
           <el-button @click="closeDialog">取 消</el-button>
         </div>
       </template>
-      <el-form ref="form" :model="formData" :rules="rules" label-width="100px">
-        <el-form-item label="菜单权限" v-if="dialog.title !== '新增角色'">
-          <el-checkbox v-model="menuExpand" @change="handleCheckedTreeExpand($event)">展开/折叠</el-checkbox>
-          <el-checkbox v-model="menuNodeAll" @change="handleCheckedTreeNodeAll($event)">全选/全不选</el-checkbox>
-          <el-checkbox v-model="formData.menuCheckStrictly" @change="handleCheckedTreeConnect($event)">父子联动</el-checkbox>
-          <el-tree class="tree-border" :data="menuOptions" show-checkbox ref="menu" node-key="id"
-            :check-strictly="!formData.menuCheckStrictly" empty-text="加载中，请稍候" @check="currentChecked"></el-tree>
-        </el-form-item>
-      </el-form>
     </el-dialog>
-
     <!-- 分配API弹窗  -->
-    <role-bind-api v-model="apiBindVisible" :role="bindingRole" :roles="roleList" />
+    <!-- <role-bind-api v-model="apiBindVisible" :role="bindingRole" :roles="roleList" /> -->
     <!-- 分配菜单弹窗  -->
-    <role-bind-menu v-model="menuBindVisible" :role="bindingRole" />
+    <!-- <role-bind-menu v-model="menuBindVisible" :role="bindingRole" /> -->
   </div>
 </template>
+
+<style>
+.dialog-from-right {
+  height: 100vh;
+  width: 25%;
+  margin: 0 auto !important;
+  overflow: auto;
+  animation: dialogFromRightEnter 0.5s;
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+}
+
+.dialog-leave {
+  height: 100vh;
+  width: 25%;
+  margin: 0 auto !important;
+  overflow: auto;
+  position: fixed;
+  right: 0;
+  top: 0;
+  bottom: 0;
+  animation: dialogFromRightLeave 0.5s;
+}
+
+@keyframes dialogFromRightEnter {
+  from {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes dialogFromRightLeave {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: translateX(100%);
+  }
+}
+</style>

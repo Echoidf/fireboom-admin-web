@@ -20,7 +20,7 @@
 </template>
 
 <script setup lang="ts">
-import { onBeforeUnmount, shallowRef, reactive, toRefs } from "vue";
+import { onBeforeUnmount, shallowRef, reactive, toRefs, onMounted } from "vue";
 import { Editor, Toolbar } from "@wangeditor/editor-for-vue";
 
 // API 引用
@@ -74,6 +74,7 @@ onBeforeUnmount(() => {
   const editor = editorRef.value;
   if (editor == null) return;
   editor.destroy();
+
 });
 </script>
 

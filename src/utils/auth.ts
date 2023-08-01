@@ -36,9 +36,9 @@ export function getToken(): DataInfo<number> {
  * 将`accessToken`、`expires`这两条信息放在key值为authorized-token的cookie里（过期自动销毁）
  * 将`username`、`roles`、`refreshToken`、`expires`这四条信息放在key值为`user-info`的sessionStorage里（浏览器关闭自动销毁）
  */
-export function setToken(data: DataInfo<number>) {
+export function setToken(data) {
   const { accessToken, refreshToken, expires } = data;
-
+  console.log(data);
   const cookieString = JSON.stringify({ accessToken, expires });
 
   expires
@@ -64,19 +64,19 @@ export function setToken(data: DataInfo<number>) {
       permissions
     });
   }
-
-  if (data.username && data.roles) {
-    const { username, roles, avatar, permissions } = data;
-    setSessionKey(username, roles, avatar, permissions);
-  } else {
-    const username =
-      storageSession().getItem<DataInfo<number>>(sessionKey)?.username ?? "";
-    const roles =
-      storageSession().getItem<DataInfo<number>>(sessionKey)?.roles ?? [];
-    const avatar =
-      storageSession().getItem<DataInfo<number>>(sessionKey)?.avatar ?? "";
-
-    setSessionKey(username, roles, avatar, data.permissions);
+  if (!data.type) {
+    if (data.username && data.roles) {
+      const { username, roles, avatar, permissions } = data;
+      setSessionKey(username, roles, avatar, permissions);
+    } else {
+      const username =
+        storageSession().getItem<DataInfo<number>>(sessionKey)?.username ?? "";
+      const roles =
+        storageSession().getItem<DataInfo<number>>(sessionKey)?.roles ?? [];
+      const avatar =
+        storageSession().getItem<DataInfo<number>>(sessionKey)?.avatar ?? "";
+      setSessionKey(username, roles, avatar, data.permissions);
+    }
   }
 }
 

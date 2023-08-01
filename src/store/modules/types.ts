@@ -44,3 +44,14 @@ export type userType = {
   avatar: string;
   loginType: string;
 };
+
+export type LogType = {
+  id: number;
+  method: string;
+  ip: string;
+  path: string;
+  updateAt: string;
+  ua: string;
+  userName: string;
+  userId: string;
+}

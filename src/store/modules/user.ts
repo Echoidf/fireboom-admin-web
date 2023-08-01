@@ -88,8 +88,14 @@ export const useUserStore = defineStore({
       return new Promise<RefreshTokenResult>((resolve, reject) => {
         refreshTokenApi(data)
           .then(res => {
+            const refreshTokenResData = {
+              accessToken: res.data.data.data.data.accessToken,
+              refreshToken: res.data.data.data.data.refreshToken,
+              expires: res.data.data.data.data.expireIn,
+              type: "refresh",
+            }
             if (res) {
-              setToken(res.data.data);
+              setToken(refreshTokenResData);
               resolve(res);
             }
           })

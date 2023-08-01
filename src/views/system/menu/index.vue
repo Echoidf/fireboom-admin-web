@@ -6,13 +6,10 @@ import { merge } from "@/utils";
 import { ref, reactive, nextTick } from "vue";
 import { onMounted } from "vue";
 import { ElForm, ElMessage, ElMessageBox } from "element-plus";
-import { getSubmenu, getPerm } from "@/api/system";
+import { GetApiList, getBindAPI, getMenuPerms } from "@/api/system";
 import { Icon } from '@iconify/vue';
-import { debug } from "console";
 import { handleTree, is } from "@pureadmin/utils";
 import { parseTime } from "@/utils/date";
-import Treeselect from "@riophae/vue-treeselect";
-import "@riophae/vue-treeselect/dist/vue-treeselect.css";
 defineOptions({
   name: "MenuManage"
 });
@@ -22,6 +19,7 @@ const menuFormRef = ref(ElForm);
 const loading = ref(false);
 const isExpandAll = ref(false);
 const refreshTable = ref(true);
+let apiId = ref()
 const dialog = reactive<DialogOption>({
   visible: false
 });
@@ -33,10 +31,10 @@ const dialogPerm = reactive<DialogOption>({
   visible: false
 });
 const menuList = ref<Menu[]>([]);
-const tableSubmenu = ref([]); // 存放子菜单数据
-const tableSubPerm = ref([]); // 存放子权限数据
-// <Required<Omit<Menu, "id" | "parentId">>>
+const menuData = ref([]);
+const menuTree = [{ id: 0, label: "主目录", api_id: "", createTime: "", icon: "", is_bottom: 0, level: 0, menu_typr: "M", parentId: null, path: "/", perms: "", sort: 1, children: [] }];
 const formData = reactive({
+  apiId: 0,
   label: "",
   level: 1,
   path: "",
@@ -44,13 +42,14 @@ const formData = reactive({
   sort: 1,
   parentId: 0,
   menuType: "M",
+  perms: "",
 });
 const editingId = ref<number>();
-
+const apiList = ref([]); // 存放api信息
 const rules = reactive({
   parentId: [{ required: true, trigger: "blur" }],
   label: [{ required: true, message: "请输入菜单名称", trigger: "blur" }],
-  path: [{ required: true, message: "请输入菜单路径", trigger: "blur" }]
+  path: [{ required: false, message: "请输入菜单路径", trigger: "blur" }]
 });
 
 // 选择表格的行菜单ID
@@ -66,15 +65,15 @@ async function handleQuery() {
     operationName: "System/Menu/GetMany"
   });
   if (!error) {
-    menuList.value = handleTree(data!.data!, "id");
-    // menuList.value = data!.data!;
+    menuTree[0].children = handleTree(data!.data!, "id");
+    menuData.value = data!.data!;
+    menuList.value = menuTree[0].children;
   }
   loading.value = false;
 }
 
 /**
  * 行点击事件
- *
  * @param row
  */
 function onRowClick(row: Menu) {
@@ -82,12 +81,11 @@ function onRowClick(row: Menu) {
 }
 
 /**
- * 打开表单弹窗
- *
+ * 增加
  */
-
-//  增加
 function openDialogAdd(menu?: Menu) {
+  formData.perms = "";
+  editingId.value = 0;
   dialog.visible = true;
   dialog.title = "新增菜单";
   if (!menu) { // 一级菜单
@@ -95,7 +93,7 @@ function openDialogAdd(menu?: Menu) {
     formData.parentId = 0;
   } else {     // 二级菜单
     formData.level = menu.level + 1;
-    formData.parentId = menu.id
+    formData.parentId = menu.id;
   }
 }
 function openDialogUpdate(menu?: Menu) {
@@ -103,19 +101,11 @@ function openDialogUpdate(menu?: Menu) {
   dialog.title = "修改菜单";
   editingId.value = menu.id;
   merge(formData, menu);
+  formData.menuType = menu.menu_type;
+  if (!formData.parentId) {
+    formData.parentId = 0;
+  }
 }
-// function openDialog(menu?: Menu) {
-//   dialog.visible = true;
-//   if (msg === "修改") {
-//     dialog.title = "修改菜单";
-//     editingId.value = menu.id;
-//     merge(formData, menu);
-//   } else {
-//     dialog.title = "新增菜单";
-//     formData.level = menu.level + 1;
-//     formData.parentId = menu.id;
-//   }
-// }
 
 /**
  * 菜单提交
@@ -142,7 +132,9 @@ function submitForm() {
         if (verify) {
           ElMessage.warning("该菜单已存在, 请勿重复添加");
         } else {
-
+          formData.apiId = apiId.value;
+          // 清空apiId
+          apiId = ref();
           const { error } = await api.mutate({
             operationName: "System/Menu/CreateOne",
             input: {
@@ -161,33 +153,41 @@ function submitForm() {
   });
 }
 
+
+/**  
+ * 查询当前菜单下是否还有子菜单
+ */
+function judgeHasChildren(id: number) {
+  return menuData.value.some(item => {
+    return item.parentId === id;
+  })
+}
 /**
  * 删除菜单
  */
 function handleDelete(menuId: number) {
-  if (!menuId) {
-    ElMessage.warning("请勾选删除项");
-    return false;
-  }
-
-  ElMessageBox.confirm("确认删除已选中的数据项?", "警告", {
-    confirmButtonText: "确定",
-    cancelButtonText: "取消",
-    type: "warning"
-  })
-    .then(async () => {
-      const { error } = await api.mutate({
-        operationName: "System/Menu/DeleteOne",
-        input: {
-          id: menuId
-        }
-      });
-      if (!error) {
-        ElMessage.success("删除成功");
-        handleQuery();
-      }
+  if (judgeHasChildren(menuId)) {
+    ElMessage.warning("无法删除父菜单")
+  } else {
+    ElMessageBox.confirm("确认删除已选中的数据项?", "警告", {
+      confirmButtonText: "确定",
+      cancelButtonText: "取消",
+      type: "warning"
     })
-    .catch(() => ElMessage.info("已取消删除"));
+      .then(async () => {
+        const { error } = await api.mutate({
+          operationName: "System/Menu/DeleteOne",
+          input: {
+            id: menuId
+          }
+        });
+        if (!error) {
+          ElMessage.success("删除成功");
+          handleQuery();
+        }
+      })
+      .catch(() => ElMessage.info("已取消删除"));
+  }
 }
 
 /**
@@ -218,26 +218,17 @@ function resetForm() {
 
 onMounted(() => {
   handleQuery();
+  GetApiList().then(res => {
+    apiList.value = res.data.data.data;
+  }).catch(err => {
+    ElMessage.error("获取信息失败!");
+  })
 });
-
-
-/**
- * 查看子权限
- */
-function viewPerm(id: number) {
-  dialogPerm.title = "子权限";
-  getPerm(id).then(res => {
-    dialogPerm.visible = true;
-    tableSubPerm.value = res.data.data.data;
-  });
-}
 
 /** 展开/折叠操作 */
 function toggleExpandAll() {
   refreshTable.value = false;
   isExpandAll.value = !isExpandAll.value;
-  console.log(isExpandAll.value);
-
   nextTick(() => {
     refreshTable.value = true;
   });
@@ -278,17 +269,17 @@ function toggleExpandAll() {
         <el-table-column label="操作" align="center" class-name="small-padding fixed-width" width="300">
           <template #default="scope">
             <Auth value="system:menu:edit">
-              <el-button size="small" type="text" icon="el-icon-edit" @click.stop="openDialogUpdate(scope.row)">
+              <el-button size="small" link type="primary" icon="el-icon-edit" @click.stop="openDialogUpdate(scope.row)">
                 <Icon icon="ep:edit" />修改
               </el-button>
             </Auth>
             <Auth value="system:menu:add">
-              <el-button size="small" type="text" icon="el-icon-plus" @click.stop="openDialogAdd(scope.row)">
+              <el-button size="small" link type="primary" icon="el-icon-plus" @click.stop="openDialogAdd(scope.row)">
                 <Icon icon="ep:plus" />新增
               </el-button>
             </Auth>
             <Auth value="system:menu:edit">
-              <el-button size="small" type="text" icon="el-icon-delete" @click="handleDelete(scope.row.id)">
+              <el-button size="small" link type="primary" icon="el-icon-delete" @click="handleDelete(scope.row.id)">
                 <Icon icon="ep:delete" />删除
               </el-button>
             </Auth>
@@ -297,18 +288,18 @@ function toggleExpandAll() {
       </el-table>
     </el-card>
 
-
-
     <!--@@@@@ openDialog @@@@@-->
     <el-dialog :title="dialog.title" v-model="dialog.visible" @close="closeDialog" destroy-on-close appendToBody
       width="750px">
       <el-form ref="menuFormRef" :model="formData" :rules="rules" label-width="100px">
+        <el-form-item label="上级菜单">
+          <el-tree-select v-model="formData.parentId" value-key="id" :data="menuTree" check-strictly
+            :render-after-expand="false" />
+        </el-form-item>
         <el-form-item label="菜单名称" prop="label">
           <el-input v-model="formData.label" placeholder="请输入菜单名称" />
         </el-form-item>
-        <el-form-item label="路由路径" prop="path">
-          <el-input v-model="formData.path" placeholder="/system  (目录以/开头)" />
-        </el-form-item>
+
         <el-col :span="24">
           <el-form-item label="菜单类型" prop="menuType">
             <el-radio-group v-model="formData.menuType">
@@ -318,16 +309,33 @@ function toggleExpandAll() {
             </el-radio-group>
           </el-form-item>
         </el-col>
-        <el-form-item label="图标" prop="icon">
-          <!-- 图标选择器 -->
-          <icon-select v-model="formData.icon" />
-        </el-form-item>
-
+        <el-col :span="24" v-if="formData.menuType !== 'F'">
+          <el-form-item label="图标" prop="icon">
+            <!-- 图标选择器 -->
+            <icon-select v-model="formData.icon" />
+          </el-form-item>
+        </el-col>
+        <el-col v-if="formData.menuType !== 'F'">
+          <el-form-item label="组件路径" prop="path">
+            <el-input v-model="formData.path" placeholder="/system  (目录以/开头)" />
+          </el-form-item>
+        </el-col>
         <el-form-item label="排序" prop="sort">
           <el-input-number v-model="formData.sort" style="width: 100px" controls-position="right" :min="0" />
         </el-form-item>
+        <el-col v-if="formData.menuType !== 'M'">
+          <el-form-item label="权限标识" prop="perms">
+            <el-input v-model="formData.perms" placeholder="请输入权限标识" />
+          </el-form-item>
+        </el-col>
+        <el-col v-if="formData.menuType === 'F'">
+          <el-form-item label="绑定飞布Api" prop="api_id">
+            <el-select v-model="apiId" placeholder="请选择飞布Api接口">
+              <el-option v-for="item in apiList" :key="item.id" :label="item.path" :value="item.id" />
+            </el-select>
+          </el-form-item>
+        </el-col>
       </el-form>
-
       <template #footer>
         <div class="dialog-footer">
           <Auth value="system:menu:edit">
@@ -339,7 +347,5 @@ function toggleExpandAll() {
         </div>
       </template>
     </el-dialog>
-
-
   </div>
 </template>

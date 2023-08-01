@@ -45,17 +45,22 @@ export default ({ command, mode }: ConfigEnv): UserConfigExport => {
       host: "0.0.0.0",
       proxy: {
         "/operations": {
-          target: "http://192.168.211.209:9991",
+          target: "http://w4xf8p.natappfree.cc",
           changeOrigin: true
         },
+        // http://localhost:9991
         "/auth": {
-          target: "http://192.168.211.209:9991",
+          target: "http://w4xf8p.natappfree.cc",
           changeOrigin: true
         },
         "/proxy": {
-          target: "http://192.168.211.209:9991",
+          target: "http://w4xf8p.natappfree.cc",
           changeOrigin: true
-        }
+        },
+        "/s3": {
+          target: "http://w4xf8p.natappfree.cc",
+          changeOrigin: true
+        },
       }
     },
     plugins: getPluginsList(command, VITE_CDN, VITE_COMPRESSION),

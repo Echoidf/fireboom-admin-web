@@ -5,10 +5,13 @@ import {
   InternalAxiosRequestConfig
 } from "axios";
 import { stringify } from "qs";
-import { getToken, formatToken } from "@/utils/auth";
+import { getToken, formatToken, setToken } from "@/utils/auth";
 import axios from "axios";
 import { ElMessage } from "element-plus";
-
+import { useUserStoreHook } from "@/store/modules/user";
+import router from "@/router";
+import { storageSession } from "@pureadmin/utils";
+const whiteList = ["/login", "/operations/Casdoor/RefreshToken"];
 // 相关配置请参考：www.axios-js.com/zh-cn/docs/#axios-request-config-1
 const instance = axios.create({
   // 请求超时时间
@@ -28,6 +31,9 @@ const instance = axios.create({
 instance.defaults.transformRequest = [
   (data: any) => {
     // 对请求数据进行处理，去掉外层的data
+    if (!data) {
+      return;
+    }
     return JSON.stringify(data.data || {});
   }
 ];
@@ -36,9 +42,28 @@ instance.defaults.transformRequest = [
 instance.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
     // 在请求发送之前做一些处理，比如添加 token、headers 等
-    const token = getToken();
-    if (token) {
-      config.headers["Authorization"] = formatToken(token.accessToken);
+    if (whiteList.includes(config.url)) {
+      return config;
+    }
+    const data = getToken();
+    if (data) {
+      const now = new Date().getTime();
+      const expired = ((parseInt(data.expires)) - (now / 1000) <= 0); // 是否过期
+      if (expired) {
+        // token过期刷新
+        // 获取refreshToken的值
+        const refreshToken = storageSession().getItem("user-info")['refreshToken'];
+        useUserStoreHook().handRefreshToken({ refreshToken })
+          .then(res => {
+            const token = res.data.data.data.data.accessToken;
+            config.headers["Authorization"] = formatToken(token);
+          }).catch(err => {
+            // refreshToken已失效，跳转登录界面
+            useUserStoreHook().logOut();
+          })
+      } else {
+        config.headers["Authorization"] = formatToken(data.accessToken);
+      }
     }
     return config;
   },

@@ -6,7 +6,7 @@ export default {
   },
   children: [
     {
-      path: "/system/menu/index",
+      path: "/system/menu",
       name: "MenuManage",
       component: () => import("@/views/system/menu/index.vue"),
       meta: {
@@ -15,13 +15,25 @@ export default {
       }
     },
     {
-      path: "/system/user/index",
+      path: "/system/user",
       name: "UserManage",
       component: () => import("@/views/system/user/index.vue"),
       meta: {
         title: "用户管理",
         roles: ["admin"]
-      }
+      },
+      children: [
+        {
+          path: "/system/user/updateUser",
+          name: "UserUpdateManage",
+          component: () => import("@/views/system/user/updateUser/index.vue"),
+          meta: {
+            title: "用户修改",
+            roles: ["admin"],
+            rank: 0
+          },
+        },
+      ],
     },
     {
       path: "/system/role",
@@ -32,14 +44,14 @@ export default {
         roles: ["admin"]
       }
     },
-    // {
-    //   path: "/system/perm",
-    //   name: "PermManage",
-    //   component: () => import("@/views/system/permission/index.vue"),
-    //   meta: {
-    //     title: "权限管理",
-    //     roles: ["admin"],
-    //   }
-    // }
+    {
+      path: "/system/log",
+      name: "LogManage",
+      component: () => import("@/views/system/log/index.vue"),
+      meta: {
+        title: "日志管理",
+        roles: ["admin"],
+      },
+    },
   ]
 };

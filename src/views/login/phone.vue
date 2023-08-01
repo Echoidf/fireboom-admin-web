@@ -12,6 +12,8 @@ import { useUserStoreHook } from "@/store/modules/user";
 import { useRenderIcon } from "@/components/ReIcon/src/hooks";
 import Iphone from "@iconify-icons/ep/iphone";
 import { sendVerifyCode } from "@/api/user";
+import { usePermissionStoreHook } from "@/store/modules/permission";
+import { addPathMatch } from "@/router/utils";
 
 const { t } = useI18n();
 const loading = ref(false);
@@ -40,8 +42,8 @@ const onLogin = async (formEl: FormInstance | undefined) => {
             loginType: loginType.value
           })
           .then(res => {
-            console.log(res);
-            
+            usePermissionStoreHook().handleWholeMenus([]);
+            addPathMatch();
             if (res.success) {
               router.push("/");
               message("登录成功", { type: "success" });
