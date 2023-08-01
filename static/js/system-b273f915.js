@@ -1,1 +1,0 @@
-import{aw as t}from"./index-11183741.js";const r=e=>t.post("/operations/System/Perm/CreateMany",{data:e}),o=e=>t.get(`/operations/System/Menu/GetMenuPerms?menuId=${e}`),n=e=>t.post("/proxy/perm",{data:e}),a=e=>t.post("/operations/System/Role/DeleteMany",{data:{ids:e}}),m=e=>t.post("/proxy/menuTree",{data:e});export{n as a,a as d,o as g,m as r,r as s};
